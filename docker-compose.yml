@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # Backend API - Node.js com Express
+  contatos-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: contatos-crm-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${API_PORT:-3001}
+      - DB_HOST=${DB_HOST:-database-infrastructure_postgres_1}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-crm_juridico}
+      - DB_USER=${DB_USER:-crm_app_user}
+      - DB_PASSWORD=${DB_PASSWORD:-CrmAppSecurePass789!@#}
+      - DB_SSL=${DB_SSL:-true}
+      - JWT_SECRET=${JWT_SECRET:-SuperSecretJWTKey123!@#}
+      - API_RATE_LIMIT=${API_RATE_LIMIT:-100}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+    ports:
+      - "${API_PORT:-3001}:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - crm-network
+    depends_on:
+      - database-infrastructure_postgres_1
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend - React com Vite
+  contatos-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: contatos-crm-frontend
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3001}
+      - VITE_APP_NAME=${VITE_APP_NAME:-CRM Contatos}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - crm-network
+    depends_on:
+      contatos-api:
+        condition: service_healthy
+
+  # Nginx para proxy reverso (opcional)
+  nginx:
+    image: nginx:alpine
+    container_name: contatos-crm-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/ssl:/etc/nginx/ssl
+    networks:
+      - crm-network
+    depends_on:
+      - contatos-api
+      - contatos-frontend
+    profiles:
+      - production
+
+networks:
+  crm-network:
+    external: true
+    name: database-infrastructure_crm-network
+
+volumes:
+  node_modules_backend:
+  node_modules_frontend:
